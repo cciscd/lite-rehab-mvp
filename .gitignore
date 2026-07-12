@@ -1,0 +1,21 @@
+# ESP-IDF build
+build/
+build-host/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Python
+__pycache__/
+*.pyc
+sessions/
+models/
+
+# IDE / editor
+.vscode/
+.pytest_cache/
+.cache/
+
+# macOS
+.DS_Store

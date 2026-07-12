@@ -1,0 +1,6 @@
+numpy>=2.0
+opencv-python>=4.9
+pyserial>=3.5
+pytest>=8.0
+mediapipe>=0.10.14; python_version < "3.13"
+torch>=2.2

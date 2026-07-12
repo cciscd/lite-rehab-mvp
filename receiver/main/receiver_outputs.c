@@ -1,0 +1,86 @@
+#include "receiver_outputs.h"
+
+#include "driver/gpio.h"
+#include "driver/ledc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+
+#define LED_GPIO GPIO_NUM_2
+#define BUZZER_GPIO GPIO_NUM_18
+
+typedef struct { motion_quality_t quality; bool new_rep; } feedback_event_t;
+static QueueHandle_t feedback_queue;
+static bool is_connected;
+
+static void tone(unsigned frequency, unsigned duration_ms)
+{
+    ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_0, frequency);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 512);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+static void feedback_task(void *arg)
+{
+    (void)arg;
+    feedback_event_t event;
+    while (true) {
+        if (xQueueReceive(feedback_queue, &event, pdMS_TO_TICKS(500)) == pdTRUE) {
+            if (event.quality == MOTION_QUALITY_TOO_FAST ||
+                event.quality == MOTION_QUALITY_INSUFFICIENT_RANGE) {
+                tone(280, 180); vTaskDelay(pdMS_TO_TICKS(80)); tone(220, 220);
+            } else if (event.new_rep) {
+                tone(880, 100);
+            }
+        } else if (!is_connected) {
+            gpio_set_level(LED_GPIO, !gpio_get_level(LED_GPIO));
+        } else {
+            gpio_set_level(LED_GPIO, 1);
+        }
+    }
+}
+
+esp_err_t receiver_outputs_init(void)
+{
+    const gpio_config_t led = {
+        .pin_bit_mask = 1ULL << LED_GPIO,
+        .mode = GPIO_MODE_INPUT_OUTPUT,
+    };
+    ESP_ERROR_CHECK(gpio_config(&led));
+    const ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = 1000,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&timer));
+    const ledc_channel_config_t channel = {
+        .gpio_num = BUZZER_GPIO,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = LEDC_CHANNEL_0,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = 0,
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&channel));
+    feedback_queue = xQueueCreate(8, sizeof(feedback_event_t));
+    if (feedback_queue == NULL) return ESP_ERR_NO_MEM;
+    xTaskCreate(feedback_task, "feedback", 3072, NULL, 4, NULL);
+    return ESP_OK;
+}
+
+void receiver_outputs_set_connected(bool connected)
+{
+    is_connected = connected;
+    gpio_set_level(LED_GPIO, connected ? 1 : 0);
+}
+
+void receiver_outputs_feedback(motion_quality_t quality, bool new_rep)
+{
+    if (feedback_queue == NULL || (!new_rep && quality == MOTION_QUALITY_NONE)) return;
+    const feedback_event_t event = {.quality = quality, .new_rep = new_rep};
+    (void)xQueueSend(feedback_queue, &event, 0);
+}
