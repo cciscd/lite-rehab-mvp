@@ -21,7 +21,9 @@ def fuse_feedback(
         return FusionResult(mode, "Move more slowly")
     if imu_quality == "insufficient_range":
         return FusionResult(mode, "Increase movement range")
-    if camera_available and trunk_flag:
+    if imu_quality == "trunk_compensation":
+        return FusionResult(mode, "Avoid trunk compensation")
+    if camera_available and state != "idle" and trunk_flag:
         return FusionResult(mode, "Avoid trunk compensation")
     if (
         camera_available

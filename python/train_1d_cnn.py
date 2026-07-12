@@ -85,7 +85,8 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "labels": labels,
-                "mean": mean.reshape(-1), "std": std.reshape(-1),
+                "mean": torch.tensor(mean.reshape(-1)),
+                "std": torch.tensor(std.reshape(-1)),
                 "window_size": 100, "arch": args.arch,
                 "held_out_subject": args.holdout_subject,
                 "accuracy": accuracy}, args.output)
