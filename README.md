@@ -32,7 +32,7 @@ Feedback states:
 | `shared` | CRC-protected BLE packet and motion state machine |
 | `wearable` | MYOSA ESP32 WROOM-32E firmware (`esp32`) |
 | `receiver` | ESP32-S3 N16R8 receiver firmware (`esp32s3`) |
-| `python` | Dashboard, data collection, tests, and optional 1D-CNN |
+| `python` | Dashboard, data collection, tests, and optional CNN-BiGRU |
 | `tests` | Host-side C tests |
 | `WIRING_GUIDE.md` | Wire-by-wire assembly instructions |
 | `COMPONENTS.md` | Bilingual component list |
@@ -105,13 +105,13 @@ python collect_data.py --port auto --subject S01 --label elbow_flexion --seconds
 
 Repeat for at least three people. Keep one complete participant out of training.
 
-## 7. Train the optional 1D-CNN
+## 7. Train the optional CNN-BiGRU
 
 ```bash
 python train_1d_cnn.py --data data --holdout-subject S03 \
-  --output models/imu_1dcnn.pt
+  --arch cnn_bigru --output models/imu_cnn_bigru.pt
 
-python run_dashboard.py --port auto --model models/imu_1dcnn.pt
+python run_dashboard.py --port auto --model models/imu_cnn_bigru.pt
 ```
 
 The dashboard uses the firmware's deterministic classifier unless a valid model is supplied. Do not report model performance until it has been measured on a held-out participant.
