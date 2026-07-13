@@ -123,7 +123,7 @@ CNN-BiGRU 推理运行在电脑端。静止状态由 ESP32 规则门控，固件
 ./scripts/test_all.sh
 ```
 
-经验证的完整检查包含 61 项 Python 测试、3 项 C 主机测试、Dashboard 模型加载冒烟测试、佩戴端 ESP-IDF 构建和接收端 ESP-IDF 构建。
+经验证的完整检查包含 70 项 Python 测试、3 项 C 主机测试、Dashboard 模型加载冒烟测试、佩戴端 ESP-IDF 构建和接收端 ESP-IDF 构建。
 
 ## 项目结构
 

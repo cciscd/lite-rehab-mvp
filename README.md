@@ -123,7 +123,7 @@ Run the complete project check:
 ./scripts/test_all.sh
 ```
 
-The verified suite contains 61 Python tests, 3 C host tests, a dashboard checkpoint smoke test, a wearable ESP-IDF build, and a receiver ESP-IDF build.
+The verified suite contains 70 Python tests, 3 C host tests, a dashboard checkpoint smoke test, a wearable ESP-IDF build, and a receiver ESP-IDF build.
 
 ## Repository map
 
