@@ -3,6 +3,7 @@ from collections import deque
 import numpy as np
 
 from literehab.dashboard_view import (
+    COLORS,
     DashboardViewState,
     display_label,
     feedback_presentation,
@@ -44,6 +45,14 @@ def test_internal_labels_are_human_readable():
     assert display_label("elbow_flexion") == "Elbow Flexion"
     assert display_label("IMU-only") == "IMU Only"
     assert display_label("") == "--"
+
+
+def test_dark_theme_uses_cool_clinical_surfaces():
+    background = COLORS["background"]
+    surface = COLORS["surface"]
+
+    assert background[0] > background[2]
+    assert surface[0] > surface[2]
 
 
 def test_device_statuses_have_semantic_tones():

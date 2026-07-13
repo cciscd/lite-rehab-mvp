@@ -8,9 +8,9 @@ import numpy as np
 
 CANVAS_SIZE = (1280, 720)
 COLORS = {
-    "background": (18, 22, 30),
-    "surface": (28, 34, 45),
-    "surface_alt": (35, 43, 56),
+    "background": (43, 27, 17),
+    "surface": (55, 39, 28),
+    "surface_alt": (70, 52, 39),
     "text": (240, 244, 248),
     "muted_text": (156, 165, 178),
     "success": (105, 200, 91),
