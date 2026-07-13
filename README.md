@@ -24,7 +24,7 @@ LiteRehab Fusion is a dual-board coursework and engineering prototype for upper-
 | Independent camera | MaixCAM2 RTSP over USB NCM | Working |
 | Vision | MediaPipe pose on the computer | Working |
 | IMU model | Auto-loaded CNN-BiGRU checkpoint | Working |
-| Logging | Synchronized IMU, pose, prediction, and label CSV | Working |
+| Logging | Synchronized IMU/pose CSV with optional prediction and label fields | Working |
 
 ## How it works
 
@@ -87,14 +87,14 @@ Connect MaixCAM2 to the computer with a USB data cable, open [maixcam2/main.py](
 ### 4. Start the dashboard
 
 ```bash
-./scripts/start_maixcam2_demo.sh rtsp://10.203.102.1:8554/live
+PYTHON=python ./scripts/start_maixcam2_demo.sh rtsp://10.203.102.1:8554/live
 ```
 
 If the USB NCM address differs, read the exact RTSP URL from the MaixVision terminal and pass it to the same command. The overlay should report connected serial and camera inputs and enter Fusion mode when the right shoulder, elbow, wrist, and hip are visible.
 
 ### Optional UVC mode
 
-UVC remains available as an alternative when a local camera device is preferable. Switch MaixCAM2 to its UVC output, identify the local camera index with `PYTHONPATH=python python scripts/probe_cameras.py`, and pass that index to `./scripts/start_maixcam2_demo.sh`.
+UVC remains available as an alternative when a local camera device is preferable. Switch MaixCAM2 to its UVC output, identify the local camera index with `PYTHONPATH=python python scripts/probe_cameras.py`, and pass that index to `PYTHON=python ./scripts/start_maixcam2_demo.sh`.
 
 ## Demo checklist
 

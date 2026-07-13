@@ -24,7 +24,7 @@ LiteRehab Fusion 是一个用于上肢康复演示的双开发板课程与工程
 | 独立摄像头 | MaixCAM2 RTSP over USB NCM | 可用 |
 | 视觉 | 电脑端 MediaPipe 姿态识别 | 可用 |
 | IMU 模型 | 自动加载 CNN-BiGRU checkpoint | 可用 |
-| 记录 | 同步记录 IMU、姿态、预测和标签 CSV | 可用 |
+| 记录 | 同步记录 IMU/姿态 CSV，并提供可选预测与标签字段 | 可用 |
 
 ## 系统工作方式
 
@@ -55,9 +55,9 @@ flowchart LR
 | 2–3 | USB 数据线 | 供电、烧录、串口和摄像头网络 |
 
 ```text
-Wearable: MYOSA I²C ── MPU6050 ── SSD1306 OLED
-Receiver: GPIO2 ── resistor ── LED ── GND; GPIO18 ── resistor ── passive buzzer ── GND
-Host: ESP32-S3 native USB and MaixCAM2 Type-C use separate USB data cables
+穿戴端：MYOSA I²C ── MPU6050 ── SSD1306 OLED
+接收端：GPIO2 ── 电阻 ── LED ── GND；GPIO18 ── 电阻 ── 无源蜂鸣器 ── GND
+电脑端：ESP32-S3 原生 USB 与 MaixCAM2 Type-C 分别使用独立 USB 数据线
 ```
 
 将 MPU6050 牢固固定在前臂背侧，X 轴指向手部，Z 轴朝向皮肤外侧。上电前请阅读[完整接线指南](WIRING_GUIDE.md)。
@@ -87,14 +87,14 @@ pip install -r python/requirements.txt
 ### 4. 启动 Dashboard
 
 ```bash
-./scripts/start_maixcam2_demo.sh rtsp://10.203.102.1:8554/live
+PYTHON=python ./scripts/start_maixcam2_demo.sh rtsp://10.203.102.1:8554/live
 ```
 
 如果 USB NCM 地址不同，请从 MaixVision 终端读取准确的 RTSP URL，并传给同一命令。画面叠加信息应显示串口和摄像头均已连接；当右肩、右肘、右手腕和右髋可见时，系统将进入 Fusion 模式。
 
 ### 可选 UVC 模式
 
-需要使用本地摄像头设备时，仍可选择 UVC。将 MaixCAM2 切换到 UVC 输出，使用 `PYTHONPATH=python python scripts/probe_cameras.py` 确认本地摄像头编号，再将该编号传给 `./scripts/start_maixcam2_demo.sh`。
+需要使用本地摄像头设备时，仍可选择 UVC。将 MaixCAM2 切换到 UVC 输出，使用 `PYTHONPATH=python python scripts/probe_cameras.py` 确认本地摄像头编号，再将该编号传给 `PYTHON=python ./scripts/start_maixcam2_demo.sh`。
 
 ## 演示检查表
 
