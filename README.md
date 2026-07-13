@@ -173,7 +173,8 @@ else:
 | 1 | LED + 220 Ω resistor | Receiver status indicator |
 | 1 | Breadboard + jumper wires | Receiver wiring |
 | 2 | USB data cables | Power, flashing, serial |
-| 1 | Laptop with webcam | Vision + Python dashboard |
+| 1 | MaixCAM 2 + Type-C data cable | Vision source for the Python dashboard |
+| 1 | Laptop | Dashboard, serial receiver, and UVC/RTSP viewer |
 
 ### Wiring
 
@@ -193,6 +194,18 @@ ESP32-S3 GPIO18 ── 100Ω ── Buzzer (+) │ Buzzer (-) ── GND
 ```
 
 Use the native USB port (labeled **USB**), not the UART port.
+
+**MaixCAM 2** — no GPIO wiring is required:
+
+```text
+MaixCAM 2 Type-C data port ──► laptop USB port (power + UVC video)
+ESP32-S3 USB port            ──► a second laptop USB port (power + serial)
+MYOSA wearable               ──► ESP32-S3 receiver over BLE
+```
+
+For the preferred UVC path, enable **UVC** in MaixCAM 2 **Settings → USB
+Settings**, then run `maixcam2/main.py` with `MODE = "uvc"` through MaixVision.
+Use a powered USB hub if the laptop lacks stable ports.
 
 ## Folder Structure
 
@@ -233,6 +246,9 @@ lite_rehab_mvp/
 │   ├── requirements.txt     #   numpy, opencv, pyserial, pytest, mediapipe, torch
 │   └── tests/               #   pytest: telemetry, fusion, pose_math, pose_features,
 │                             #          synchronization, multimodal, dashboard_state
+├── maixcam2/
+│   ├── main.py              #   MaixPy UVC (default) or RTSP camera application
+│   └── README.md            #   MaixCAM 2 setup and fallback workflow
 ├── tests/                   # Host-side C tests (3 executables)
 │   ├── test_motion_packet.c #   CRC integrity and tamper detection
 │   ├── test_motion_logic.c  #   Rotation/flexion/fast/short-range assertions
@@ -242,7 +258,9 @@ lite_rehab_mvp/
 │   ├── build_all.sh         #   idf.py build for both boards
 │   ├── test_all.sh          #   C tests + pytest + py_compile + firmware build
 │   ├── flash_wearable.sh    #   ESP32 flash helper
-│   └── flash_receiver.sh    #   ESP32-S3 flash helper
+│   ├── flash_receiver.sh    #   ESP32-S3 flash helper
+│   ├── probe_cameras.py     #   Find usable local UVC camera indices
+│   └── start_maixcam2_demo.sh # Right-arm MaixCAM 2 dashboard launcher
 ├── COMPONENTS.md            #   Bilingual component list
 ├── WIRING_GUIDE.md          #   Step-by-step assembly with safety checks
 └── DEMO_GUIDE.md            #   Full demonstration walkthrough
@@ -270,17 +288,37 @@ cd python
 pip install -r requirements.txt
 ```
 
-### 3. Launch dashboard
+### 3. Start MaixCAM 2 (recommended UVC)
+
+1. On MaixCAM 2, open **Settings → USB Settings** and enable **UVC**.
+2. Connect MaixCAM 2 to the laptop using a Type-C **data** cable.
+3. In MaixVision, run [`maixcam2/main.py`](maixcam2/main.py) with
+   `MODE = "uvc"`.
+4. Identify its local camera index. Run once with MaixCAM 2 unplugged and once
+   after it is connected; the newly appearing index is normally MaixCAM 2:
 
 ```bash
-python run_dashboard.py --port auto --camera 0 --side left \
-  --output sessions/demo.csv
+PYTHONPATH=python python scripts/probe_cameras.py
+```
+
+### 4. Launch dashboard
+
+```bash
+./scripts/start_maixcam2_demo.sh <maixcam-index>
+```
+
+Equivalent direct command:
+
+```bash
+python python/run_dashboard.py --port auto --camera-source <maixcam-index> \
+  --side right --output python/sessions/maixcam2_demo.csv
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `auto` | Serial port or `auto` |
-| `--camera` | `0` | Camera device index |
+| `--camera` | `0` | Legacy local camera device index |
+| `--camera-source` | unset | `auto`, a local UVC index, or `rtsp://` URL; overrides `--camera` |
 | `--side` | required | `left` or `right` (affected limb) |
 | `--output` | `sessions/session.csv` | CSV log path |
 | `--model` | none | IMU-only CNN-BiGRU checkpoint |
@@ -291,16 +329,23 @@ python run_dashboard.py --port auto --camera 0 --side left \
 
 Controls: `q`/`Esc` quit, `b` reset torso baseline, `r` reset repetition range.
 
-If MediaPipe or camera is unavailable, the dashboard falls back to IMU-only mode.
+If the MaixCAM 2 UVC device disconnects, the dashboard keeps logging IMU data,
+shows its camera reconnect status, and automatically returns from `IMU-only` to
+`Fusion` after valid frames resume. For the RTSP fallback, set `MODE = "rtsp"`
+in `maixcam2/main.py`, copy the printed stream URL, then run:
 
-### 4. Run all tests
+```bash
+./scripts/start_maixcam2_demo.sh rtsp://<device-ip>:8554/live
+```
+
+### 5. Run all tests
 
 ```bash
 cd ..
 ./scripts/test_all.sh
 ```
 
-This runs: 3 C host executables + 34 Python tests + py_compile syntax check + both firmware builds.
+This runs: 3 C host executables + Python tests + py_compile syntax checks + both firmware builds.
 
 ## Data Collection & Training
 

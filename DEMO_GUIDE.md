@@ -73,7 +73,21 @@ LED:
 - 接收端使用原生 USB 口（标有 **USB**），非 UART 口
 - GPIO19/20 保持空闲
 
-### 1.3 供电
+### 1.3 MaixCAM 2 相机
+
+不需要连接 GPIO 或面包板。使用两条独立 USB 数据线：
+
+```text
+MaixCAM 2 Type-C 数据口 ──► 笔记本 USB（供电 + UVC 视频）
+ESP32-S3 原生 USB 口     ──► 另一个笔记本 USB（供电 + 串口）
+MYOSA 穿戴端             ── BLE ──► ESP32-S3
+```
+
+1. 在 MaixCAM 2 打开 **Settings → USB Settings → UVC**。
+2. 用 MaixVision 打开 `maixcam2/main.py`，确认 `MODE = "uvc"`，点击 Run。
+3. 相机横放在患者前方 1.5–2.0 m、胸口高度；右臂演示时，右肩、肘、手腕和右髋必须完整可见。
+
+### 1.4 供电
 
 - 开发时：两个板子各接一个笔记本 USB 口
 - 演示时：穿戴端可用移动电源供电，接收端保持笔记本供电
@@ -152,18 +166,27 @@ python -c "import mediapipe as mp; print('MediaPipe OK')"
 
 ## 四、启动 Dashboard
 
-### 4.1 基本启动
+### 4.1 MaixCAM 2 UVC 启动（推荐）
 
 ```bash
-cd lite_rehab_mvp/python
-python run_dashboard.py --port auto --camera 0 --side left \
-  --output sessions/demo.csv
+cd lite_rehab_mvp
+# 分别在 MaixCAM 2 断开和连接后运行一次，找新增的相机编号
+PYTHONPATH=python python scripts/probe_cameras.py
+
+# 右臂演示；把 <maixcam-index> 替换为新增编号
+./scripts/start_maixcam2_demo.sh <maixcam-index>
 ```
 
 - `--port auto`：自动查找串口
-- `--camera 0`：使用默认摄像头
+- `--camera-source <index>`：使用 MaixCAM 2 的 UVC 编号
 - `--side left/right`：选择佩戴传感器和训练的患侧
 - `--output`：CSV 输出路径
+
+如 UVC 无法工作，修改 `maixcam2/main.py` 为 `MODE = "rtsp"`，运行后复制 MaixVision 终端打印的 URL：
+
+```bash
+./scripts/start_maixcam2_demo.sh rtsp://<device-ip>:8554/live
+```
 
 ### 4.2 加载深度学习模型（可选）
 
@@ -196,13 +219,23 @@ python run_dashboard.py --port auto --side left \
 
 ### 步骤 2：启动 Dashboard
 
-运行 `run_dashboard.py`，确认窗口标题为 `LiteRehab-Fusion MVP`，界面包含：
+运行后确认窗口标题为 `LiteRehab-Fusion MVP`，先检查左上角：
+
+- `Serial: connected`
+- `Camera: connected: <index 或 rtsp URL>`
+- `Mode: Fusion`（若仍为 `IMU-only`，后退一点并保持右侧肩、肘、腕、髋完整入镜）
+
+界面包含：
 
 - 左侧：摄像头画面 + MediaPipe 姿态关键点
 - 右侧：IMU 陀螺仪三轴实时曲线（X红 Y绿 Z蓝）
 - 左上叠加信息：Mode / Exercise / Repetitions / Feedback / Serial 状态
 
-### 步骤 3：演示动作
+### 步骤 3：设定基线
+
+点击 Dashboard 画面使窗口获得键盘焦点。右臂自然下垂、身体直立不动时，按小写 `b` 一次；不要在终端里输入 `b`。
+
+### 步骤 4：演示动作
 
 #### 前臂旋转（forearm_rotation）
 
@@ -216,13 +249,13 @@ python run_dashboard.py --port auto --side left \
 - 弯曲肘部将前臂抬起 → 放下回原位
 - OLED 显示 `ELBOW`，完成后蜂鸣器响一声
 
-### 步骤 4：展示反馈
+### 步骤 5：展示反馈
 
 - **过快动作**：快速甩动手臂 → OLED 显示 `FAST` + 两声低音
 - **幅度不足**：小幅度晃动 → OLED 显示 `RANGE` + 两声低音
 - **躯干代偿**：弯曲时倾斜身体 → Dashboard 提示 `Avoid trunk compensation`
 
-### 步骤 5：展示数据记录
+### 步骤 6：展示数据记录
 
 演示结束后，检查 CSV 记录：
 
@@ -310,6 +343,9 @@ python train_multimodal.py --data multimodal_data --holdout-subject S03 \
 | OLED 显示 `MPU ERROR` | MPU6050 未检测到 | 检查 JST 连接，I2C 地址应为 0x68 或 0x69 |
 | OLED 一直 `BLE WAIT` | BLE 未连接 | 检查接收端是否烧录并上电，两板距离不超过 5 米 |
 | Dashboard 显示 `IMU-only` | 摄像头/MediaPipe 不可用 | 检查摄像头权限，确认 MediaPipe 模型已下载 |
+| MaixCAM 2 不在相机列表 | UVC 未开启或线缆仅充电 | 开启 UVC，改用数据线，重新运行 `main.py` 和 `probe_cameras.py` |
+| MaixCAM 2 画面可见但仍为 `IMU-only` | 右侧关键点不可见 | 后退到 1.5–2.0 m，确保右肩、肘、腕和右髋都在画面内 |
+| UVC 反复断开 | USB 供电或端口不稳定 | 换数据线/USB 口，或改用 RTSP 备用路径 |
 | Dashboard 显示 `connecting` | 串口未连接 | 检查端口号，关闭其他占用串口的程序 |
 | ESP32-S3 烧录失败 | 原生 USB 不稳定 | 使用手动下载模式（BOOT+RST），波特率降至 115200 |
 | 蜂鸣器不响 | GPIO18 接线或占空比问题 | 检查 LEDC PWM 配置，确认 GPIO18 未被占用 |

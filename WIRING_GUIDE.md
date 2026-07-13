@@ -77,7 +77,27 @@ Use the ESP32-S3 native USB port labelled **USB**, not the USB-to-UART port, bec
 - Keep the ESP32-S3 connected to the laptop for serial data.
 - The two boards communicate wirelessly by BLE, so their grounds do not need to be connected.
 
-## 4. Pre-power checklist / 上电前检查
+## 4. MaixCAM 2 camera / MaixCAM 2 相机
+
+No GPIO or breadboard wires are required. / 不需要连接 GPIO 或面包板。
+
+```text
+MaixCAM 2 Type-C data port ── Type-C data cable ── laptop USB
+ESP32-S3 native USB port   ── separate USB cable ─ laptop USB
+MYOSA wearable             ── BLE ──────────────── ESP32-S3
+```
+
+1. Use a Type-C **data** cable, not a charge-only cable.
+2. On MaixCAM 2, enable **UVC** in **Settings → USB Settings**.
+3. Run `maixcam2/main.py` through MaixVision with `MODE = "uvc"`.
+4. Keep MaixCAM 2 1.5–2.0 m away at chest height, in landscape orientation.
+5. For the right-arm demo, keep the right shoulder, elbow, wrist, and hip in frame.
+
+MaixCAM 2 only supplies video. It has no electrical connection to the wearable
+or receiver. If UVC is unavailable, use the built-in RTSP fallback described in
+[`maixcam2/README.md`](maixcam2/README.md). / MaixCAM 2 只提供视频，与穿戴端和接收端没有电气连接。
+
+## 5. Pre-power checklist / 上电前检查
 
 - JST plugs follow the keyed direction.
 - LED has a series resistor and correct polarity.
@@ -85,8 +105,9 @@ Use the ESP32-S3 native USB port labelled **USB**, not the USB-to-UART port, bec
 - No 5 V wire reaches any GPIO.
 - MPU6050 is fixed firmly.
 - BMP180 and APDS9960 are disconnected.
+- MaixCAM 2 and ESP32-S3 use separate data-capable USB connections.
 
-## 5. Expected behavior / 预期现象
+## 6. Expected behavior / 预期现象
 
 1. MYOSA OLED shows `KEEP STILL` for the two-second calibration.
 2. OLED then shows exercise, repetition count, quality, and BLE state.
