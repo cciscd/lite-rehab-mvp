@@ -1,274 +1,69 @@
 # LiteRehab-Fusion MVP
 
-Dual-board ESP32 BLE wearable for home upper-limb rehabilitation recording, with real-time IMU motion classification, MediaPipe vision fusion, and an optional multimodal CNN-BiGRU model.
+[English](README.md) | [中文](README_zh.md)
 
-## System Architecture
+LiteRehab is a dual-board upper-limb rehabilitation prototype. A wearable IMU detects arm movement, an ESP32-S3 receiver provides immediate feedback, and a MaixCAM 2 supplies video for pose-based checks. The desktop dashboard combines both streams and records synchronized session data.
 
-```
-┌─────────────────────────────────┐     BLE (NimBLE)     ┌──────────────────────────┐
-│  MYOSA ESP32 (wearable)         │ ◄──────────────────► │  ESP32-S3 (receiver)      │
-│  ┌───────────────────────────┐  │   motion_packet      │  ┌────────────────────┐   │
-│  │ MPU6050  6-axis IMU       │  │   26 bytes            │  │ CRC-16 validation  │   │
-│  │ 250 Hz, ±250 dps / ±2 g   │  │   magic + seq + ts   │  │ sequence gap check │   │
-│  └───────────┬───────────────┘  │   accel×3 + gyro×3   │  └─────────┬──────────┘   │
-│              │                  │   state + quality     │            │              │
-│  ┌───────────▼───────────────┐  │   + rep_count         │  ┌─────────▼──────────┐   │
-│  │ Complementary filter      │  │                       │  │ Feedback state     │   │
-│  │ α=0.98 gyro + accel grav  │  │                       │  │ machine: one-shot  │   │
-│  │ → roll / pitch            │  │                       │  │ buzzer per event   │   │
-│  └───────────┬───────────────┘  │                       │  └─────────┬──────────┘   │
-│              │                  │                       │            │              │
-│  ┌───────────▼───────────────┐  │                       │  ┌─────────▼──────────┐   │
-│  │ Adaptive threshold        │  │                       │  │ LED (GPIO2)        │   │
-│  │ RMS-tracking, 25-150 dps  │  │                       │  │ Buzzer (GPIO18)    │   │
-│  │ (rest-only update)        │  │                       │  │ LEDC PWM feedback  │   │
-│  └───────────┬───────────────┘  │                       │  └─────────┬──────────┘   │
-│              │                  │                       │            │              │
-│  ┌───────────▼───────────────┐  │                       │  ┌─────────▼──────────┐   │
-│  │ 3-phase state machine     │  │                       │  │ Serial telemetry   │   │
-│  │ idle → enter → exit → rep │  │                       │  │ CSV over USB-CDC   │   │
-│  └───────────┬───────────────┘  │                       │  └─────────┬──────────┘   │
-│              │                  │                       │            │              │
-│  ┌───────────▼───────────────┐  │                       └────────────┼──────────────┘
-│  │ SSD1306 OLED 128×64      │  │                                    │
-│  │ state / reps / quality    │  │                           USB Serial
-│  │ BLE connection status     │  │                                    │
-│  └───────────────────────────┘  │                           ┌────────▼──────────────┐
-└─────────────────────────────────┘                           │  Python Dashboard     │
-                                                              │  ┌──────────────────┐ │
-                                                              │  │ MediaPipe Pose   │ │
-                                                              │  │ left/right side  │ │
-                                                              │  │ elbow + shoulder │ │
-                                                              │  │ trunk detection  │ │
-                                                              │  ├──────────────────┤ │
-                                                              │  │ IMU gyro chart   │ │
-                                                              │  │ 3-axis real-time │ │
-                                                              │  ├──────────────────┤ │
-                                                              │  │ Multimodal model │ │
-                                                              │  │ IMU + vision CNN │ │
-                                                              │  │ confidence gate +│ │
-                                                              │  │ rule fallback    │ │
-                                                              │  ├──────────────────┤ │
-                                                              │  │ Sync CSV log     │ │
-                                                              │  │ lossless IMU+RGB │ │
-                                                              │  └──────────────────┘ │
-                                                              └───────────────────────┘
+This is an engineering prototype for coursework and demonstration. It is not a medical device and does not replace a physiotherapist.
+
+## What the prototype demonstrates
+
+- Counts elbow flexion and forearm rotation using a wearable MPU6050.
+- Flags movements that are too fast or have insufficient range.
+- Uses MaixCAM 2 pose landmarks to estimate elbow range of motion and trunk compensation.
+- Falls back to IMU-only feedback if video is lost, then restores fusion automatically.
+- Records every received IMU sample with the nearest valid pose features in CSV.
+- Supports an optional IMU and pose CNN-BiGRU after labelled data has been collected.
+
+## System overview
+
+```text
+Right-arm wearable                         Vision
+MYOSA ESP32 + MPU6050                     MaixCAM 2
+        │ BLE                                  │ USB UVC (default)
+        ▼                                      │ or RTSP
+ESP32-S3 receiver                              ▼
+LED + buzzer + USB serial ─────────────► Python dashboard
+                                          MediaPipe pose
+                                          rule/model fusion
+                                          synchronized CSV
 ```
 
-### Recognized States
-
-| State | Identifier | Description |
-|-------|-----------|-------------|
-| Idle | `idle` | No motion detected |
-| Forearm rotation | `forearm_rotation` | Wrist rotation around forearm axis |
-| Elbow flexion | `elbow_flexion` | Forearm bending/extending at elbow |
-
-### Feedback Quality
-
-| Quality | Identifier | Buzzer | Meaning |
-|---------|-----------|--------|---------|
-| OK | `ok` | Single high beep (880 Hz) | Range and speed within bounds |
-| Too fast | `too_fast` | Two low tones (280→220 Hz) | Peak angular velocity exceeded |
-| Insufficient range | `insufficient_range` | Two low tones | Total rotation angle too small |
-| Trunk compensation | `trunk_compensation` | Visual only | Shoulder-hip displacement ≥ 15% torso |
-
-## Algorithm
-
-### 1. Complementary Filter (Wang 2026)
-
-Gyroscope integration provides short-term orientation; accelerometer gravity vector corrects long-term drift:
-
-```
-roll  = 0.98 × (roll  + gx × dt) + 0.02 × atan2(ay, az)
-pitch = 0.98 × (pitch + gy × dt) + 0.02 × atan2(-ax, √(ay² + az²))
-```
-
-### 2. Adaptive Threshold (Khalilipour 2025)
-
-Resting-signal RMS is tracked with exponential smoothing (α=0.95). It is
-updated only below the fixed entry threshold, so an active repetition cannot
-raise its own reversal threshold:
-
-```
-rms = √(0.95 × rms² + 0.05 × signal²)
-enter = clamp(45 + 0.8 × rms, 25, 150) dps
-exit  = enter × 0.33
-```
-
-This prevents false triggers during rest while keeping sensitivity for slow movements.
-
-### 3. Three-Phase State Machine
-
-```
-      idle detection           direction change          velocity ↓ exit
- ┌──────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
- │ phase 0: idle    │───►│ phase 1: accumulate   │───►│ phase 2: exit    │───► rep counted
- │ |gyro| > enter?  │    │ integrate abs angle   │    │ |gyro| ≤ exit?   │
- │ classify axis    │    │ track peak dps        │    │                  │
- └──────────────────┘    └──────────────────────┘    └─────────────────┘
-                                 │                          │
-                           max_rep_duration exceeded ───────┘ → discarded
-                                 (5000 ms)
-```
-
-### 4. Axis Classification
-
-Gyroscope dominance ratio distinguishes rotation from flexion:
-
-- `|gx| / |gy| ≥ 1.30` and accelerometer X-dominant → forearm rotation
-- `|gy| / |gx| ≥ 1.30` and accelerometer Y-dominant → elbow flexion
-- Otherwise → hold previous state
-
-### 5. Feedback State Machine
-
-The receiver runs a one-shot feedback state machine that tracks per-state
-transitions. A success beep only fires once per completed repetition, and
-warning events do not retrigger until the motion state changes. This prevents
-persistent BLE quality values from queuing repeated buzzer events.
-
-### 6. Multimodal CNN-BiGRU (Obukhov et al. 2025)
-
-Optional dual-branch model that fuses IMU and vision. Confidence-gated: the
-vision branch is attenuated by per-window visibility, and low-confidence
-outputs automatically fall back to the deterministic wearable rules.
-
-```
-IMU branch:                            Pose branch:
-[100×6]                                [100×9]
-├── Conv1d(6→32,k5)+BN+ReLU+MP(2)      ├── Conv1d(9→32,k5)+BN+ReLU+MP(2)
-├── Conv1d(32→64,k3)+BN+ReLU+MP(2)     ├── Conv1d(32→64,k3)+BN+ReLU+MP(2)
-├── BiGRU(64→64×2)                     ├── BiGRU(64→64×2)
-└── mean pool → [128]                  └── mean pool × confidence → [128]
-
-Fusion: Concat[256] → Linear(256→128) + ReLU + Dropout(0.3)
-        ├── Exercise head: Linear(128 → num_exercises)
-        └── Quality head:  Linear(128 → num_qualities)
-```
-
-Parameters: ~300K. CPU inference: 5–10 ms per window.
-
-## Decision Resolution
-
-```
-if rule quality is warning (too_fast / insufficient_range):
-    → rule safety override (always)
-elif model available and confidence ≥ threshold:
-    → multimodal model prediction
-else:
-    → deterministic rule fallback
-```
+The camera and ESP32 boards do not share GPIO wiring. MaixCAM 2 and the ESP32-S3 receiver connect to the laptop with separate USB data cables.
 
 ## Hardware
 
-### Required Components
+| Quantity | Part | Use |
+|---:|---|---|
+| 1 | MYOSA ESP32 WROOM-32E | Wearable controller and BLE peripheral |
+| 1 | ESP32-S3-DevKitC-1 N16R8 | BLE receiver and USB serial gateway |
+| 1 | MPU6050 | Six-axis arm motion sensing |
+| 1 | SSD1306 128×64 OLED | Wearable status and repetition count |
+| 1 | MaixCAM 2 | UVC/RTSP vision source |
+| 1 each | Passive buzzer, LED, 220–330 Ω resistor | Receiver feedback |
+| 2 | Four-pin JST cables | Wearable I²C chain |
+| 2–3 | USB data cables | Receiver, MaixCAM 2, and wearable power/flashing |
 
-| Qty | Component | Purpose |
-|----:|-----------|---------|
-| 1 | MYOSA ESP32 WROOM-32E | Wearable sensing and BLE peripheral |
-| 1 | ESP32-S3-DevKitC-1 N16R8 | BLE central receiver and USB gateway |
-| 1 | MPU6050 6-axis IMU | Arm motion sensing |
-| 1 | SSD1306 128×64 OLED | Local status display |
-| 2 | 4-pin JST F-F cables | MYOSA → MPU6050 → OLED cascade |
-| 1 | Passive buzzer | Audio feedback |
-| 1 | LED + 220 Ω resistor | Receiver status indicator |
-| 1 | Breadboard + jumper wires | Receiver wiring |
-| 2 | USB data cables | Power, flashing, serial |
-| 1 | MaixCAM 2 + Type-C data cable | Vision source for the Python dashboard |
-| 1 | Laptop | Dashboard, serial receiver, and UVC/RTSP viewer |
-
-### Wiring
-
-**Wearable** — JST cascade only, no breadboard:
-
-```
-MYOSA I2C port ── JST ──► MPU6050 ── JST ──► SSD1306 OLED
-```
-
-MPU6050 orientation: fixed on dorsal forearm, X axis toward hand, Z axis outward.
-
-**Receiver** — breadboard:
-
-```
-ESP32-S3 GPIO2  ── 220Ω ── LED (+)    │   LED (-) ── GND
-ESP32-S3 GPIO18 ── 100Ω ── Buzzer (+) │ Buzzer (-) ── GND
-```
-
-Use the native USB port (labeled **USB**), not the UART port.
-
-**MaixCAM 2** — no GPIO wiring is required:
+### Connections
 
 ```text
-MaixCAM 2 Type-C data port ──► laptop USB port (power + UVC video)
-ESP32-S3 USB port            ──► a second laptop USB port (power + serial)
-MYOSA wearable               ──► ESP32-S3 receiver over BLE
+Wearable:
+MYOSA I²C ── JST ── MPU6050 ── JST ── SSD1306 OLED
+
+Receiver:
+GPIO2  ── 220–330 Ω ── LED anode; LED cathode ── GND
+GPIO18 ── 100–330 Ω ── passive buzzer (+); buzzer (-) ── GND
+
+Camera and host:
+MaixCAM 2 Type-C ── USB data cable ── laptop
+ESP32-S3 native USB ── separate USB data cable ── laptop
 ```
 
-For the preferred UVC path, enable **UVC** in MaixCAM 2 **Settings → USB
-Settings**, then run `maixcam2/main.py` with `MODE = "uvc"` through MaixVision.
-Use a powered USB hub if the laptop lacks stable ports.
+Mount the MPU6050 firmly on the back of the forearm, with its X axis pointing toward the hand and Z axis pointing away from the skin. See [WIRING_GUIDE.md](WIRING_GUIDE.md) before powering the boards.
 
-## Folder Structure
+## Quick start
 
-```
-lite_rehab_mvp/
-├── shared/                  # Cross-board C modules
-│   ├── motion_packet.h/c    #   CRC-16 BLE packet (26 bytes)
-│   ├── motion_logic.h/c     #   Complementary filter + adaptive threshold + state machine
-│   └── feedback_logic.h/c   #   One-shot buzzer state machine (per-state debounce)
-├── wearable/                # MYOSA ESP32 firmware (NimBLE Peripheral)
-│   └── main/
-│       ├── app_main.c       #   20 ms sampling loop
-│       ├── mpu6050.h/c      #   I2C driver, 250 Hz, 100-sample gyro bias calibration
-│       ├── ssd1306.h/c      #   I2C OLED, 5×7 bitmap font
-│       ├── ble_server.h/c   #   NimBLE GATT notify server
-│       └── wearable_status.h/c  # GPIO2 status LED
-├── receiver/                # ESP32-S3 firmware (NimBLE Central)
-│   └── main/
-│       ├── app_main.c       #   Packet dispatch with sequence gap detection
-│       ├── ble_client.h/c   #   BLE scan → connect → service discovery → CCCD subscribe
-│       ├── serial_telemetry.h/c #  CSV output over USB-CDC
-│       └── receiver_outputs.h/c #  Feedback state machine + LED + LEDC PWM buzzer
-├── python/
-│   ├── literehab/
-│   │   ├── telemetry.py     #   Serial line parser → TelemetrySample
-│   │   ├── fusion.py        #   IMU + vision feedback fusion (5 priority levels)
-│   │   ├── pose_math.py     #   Joint angle + trunk compensation detection
-│   │   ├── pose_features.py #   Side-aware pose extraction (left/right)
-│   │   ├── synchronization.py   #  Timestamped IMU-RGB sample pairing
-│   │   ├── multimodal.py    #   Dual-branch CNN-BiGRU + checkpoint load + predictor
-│   │   ├── dashboard_state.py   #  Decision resolution + camera health + CSV schema
-│   │   ├── cnn.py           #   1D-CNN and CNN-BiGRU model builders
-│   │   └── dataset.py       #   Sliding window (100 samples, stride 50)
-│   ├── run_dashboard.py     #   OpenCV dashboard with MediaPipe + synchronized logging
-│   ├── collect_data.py      #   Labeled IMU data recorder (rule-only)
-│   ├── train_1d_cnn.py      #   IMU-only CNN training (--arch cnn_bigru default)
-│   ├── train_multimodal.py  #   Multimodal IMU+vision training
-│   ├── requirements.txt     #   numpy, opencv, pyserial, pytest, mediapipe, torch
-│   └── tests/               #   pytest: telemetry, fusion, pose_math, pose_features,
-│                             #          synchronization, multimodal, dashboard_state
-├── maixcam2/
-│   ├── main.py              #   MaixPy UVC (default) or RTSP camera application
-│   └── README.md            #   MaixCAM 2 setup and fallback workflow
-├── tests/                   # Host-side C tests (3 executables)
-│   ├── test_motion_packet.c #   CRC integrity and tamper detection
-│   ├── test_motion_logic.c  #   Rotation/flexion/fast/short-range assertions
-│   ├── test_feedback_logic.c#   One-shot state transition coverage
-│   └── run_host_tests.sh    #   Compile and run all C tests
-├── scripts/
-│   ├── build_all.sh         #   idf.py build for both boards
-│   ├── test_all.sh          #   C tests + pytest + py_compile + firmware build
-│   ├── flash_wearable.sh    #   ESP32 flash helper
-│   ├── flash_receiver.sh    #   ESP32-S3 flash helper
-│   ├── probe_cameras.py     #   Find usable local UVC camera indices
-│   └── start_maixcam2_demo.sh # Right-arm MaixCAM 2 dashboard launcher
-├── COMPONENTS.md            #   Bilingual component list
-├── WIRING_GUIDE.md          #   Step-by-step assembly with safety checks
-└── DEMO_GUIDE.md            #   Full demonstration walkthrough
-```
-
-## Quick Start
-
-### 1. Flash firmware
+### 1. Flash the two ESP32 boards
 
 ```bash
 source ~/.espressif/v6.0.2/esp-idf/export.sh
@@ -277,159 +72,131 @@ source ~/.espressif/v6.0.2/esp-idf/export.sh
 ./scripts/flash_receiver.sh /dev/cu.usbmodem-RECEIVER
 ```
 
-For ESP32-S3 flashing issues, use manual download mode: hold BOOT, press RST, release BOOT, then flash.
+The current MaixCAM 2 update does not require reflashing either ESP32 board.
 
-### 2. Install Python dependencies
+### 2. Install the desktop environment
 
 ```bash
 conda create -n literehab python=3.12 -y
 conda activate literehab
-cd python
-pip install -r requirements.txt
+pip install -r python/requirements.txt
 ```
 
-### 3. Start MaixCAM 2 (recommended UVC)
+Allow camera access when macOS asks. If your MediaPipe package uses the Tasks API, place `pose_landmarker_lite.task` in `python/models/`.
 
-1. On MaixCAM 2, open **Settings → USB Settings** and enable **UVC**.
-2. Connect MaixCAM 2 to the laptop using a Type-C **data** cable.
-3. In MaixVision, run [`maixcam2/main.py`](maixcam2/main.py) with
-   `MODE = "uvc"`.
-4. Identify its local camera index. Run once with MaixCAM 2 unplugged and once
-   after it is connected; the newly appearing index is normally MaixCAM 2:
+### 3. Start MaixCAM 2 in UVC mode
+
+1. On MaixCAM 2, open `Settings → USB Settings` and enable `UVC`.
+2. Connect MaixCAM 2 to the laptop with a Type-C data cable.
+3. Open [maixcam2/main.py](maixcam2/main.py) in MaixVision.
+4. Keep `MODE = "uvc"` and run the file.
+
+Find the camera index by running the probe once with MaixCAM 2 disconnected and once after reconnecting it:
 
 ```bash
 PYTHONPATH=python python scripts/probe_cameras.py
 ```
 
-### 4. Launch dashboard
+The newly appearing index is normally MaixCAM 2.
+
+### 4. Start the right-arm dashboard
 
 ```bash
-./scripts/start_maixcam2_demo.sh <maixcam-index>
+PYTHON=python ./scripts/start_maixcam2_demo.sh <maixcam-index>
 ```
 
-Equivalent direct command:
+Equivalent command:
 
 ```bash
-python python/run_dashboard.py --port auto --camera-source <maixcam-index> \
-  --side right --output python/sessions/maixcam2_demo.csv
+python python/run_dashboard.py \
+  --port auto \
+  --camera-source <maixcam-index> \
+  --side right \
+  --output python/sessions/maixcam2_demo.csv
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--port` | `auto` | Serial port or `auto` |
-| `--camera` | `0` | Legacy local camera device index |
-| `--camera-source` | unset | `auto`, a local UVC index, or `rtsp://` URL; overrides `--camera` |
-| `--side` | required | `left` or `right` (affected limb) |
-| `--output` | `sessions/session.csv` | CSV log path |
-| `--model` | none | IMU-only CNN-BiGRU checkpoint |
-| `--fusion-model` | none | Multimodal IMU+vision checkpoint |
-| `--subject` | `""` | Subject ID for labelled recording |
-| `--label-exercise` | `""` | Exercise label for one recording |
-| `--label-quality` | `""` | Quality label for one recording |
+The overlay should show `Serial: connected`, `Camera: connected`, and `Mode: Fusion`. If it remains in `IMU-only`, step back until the right shoulder, elbow, wrist, and hip are all visible.
 
-Controls: `q`/`Esc` quit, `b` reset torso baseline, `r` reset repetition range.
+## RTSP fallback
 
-If the MaixCAM 2 UVC device disconnects, the dashboard keeps logging IMU data,
-shows its camera reconnect status, and automatically returns from `IMU-only` to
-`Fusion` after valid frames resume. For the RTSP fallback, set `MODE = "rtsp"`
-in `maixcam2/main.py`, copy the printed stream URL, then run:
+Use RTSP if the laptop cannot open the UVC device:
+
+1. Connect MaixCAM 2 and the laptop to the same network.
+2. Change `MODE` in [maixcam2/main.py](maixcam2/main.py) to `"rtsp"`.
+3. Run it in MaixVision and copy the printed stream URL.
+4. Start the dashboard with that URL:
 
 ```bash
-./scripts/start_maixcam2_demo.sh rtsp://<device-ip>:8554/live
+PYTHON=python ./scripts/start_maixcam2_demo.sh \
+  rtsp://<device-ip>:8554/live
 ```
 
-### 5. Run all tests
+The desktop camera layer accepts `auto`, a local camera index, or an `rtsp://` URL. It rate-limits reconnect attempts and keeps IMU logging active during camera loss.
+
+## Demonstration sequence
+
+Place MaixCAM 2 horizontally at chest height, about 1.5–2.0 m from the participant.
+
+1. Stand upright with the right arm relaxed. Click the dashboard window and press lowercase `b` once to set the trunk baseline.
+2. Perform one slow elbow flexion and return to neutral over 2–3 seconds.
+3. Hold the elbow near 90° and rotate the forearm while keeping the upper arm still.
+4. Repeat elbow flexion too quickly to trigger `too_fast` and two low tones.
+5. Perform a small partial movement to demonstrate `insufficient_range`.
+6. Lean the torso during elbow flexion to show visual trunk-compensation feedback.
+7. Briefly cover the camera. The mode changes to `IMU-only` and returns to `Fusion` when the pose is visible again.
+
+Dashboard controls:
+
+| Key | Action |
+|---|---|
+| `b` | Reset the neutral trunk baseline |
+| `r` | Reset the current repetition range |
+| `q` or `Esc` | Quit and close the CSV file |
+
+The default session file is `python/sessions/maixcam2_demo.csv`.
+
+## Detection and feedback
+
+| Output | Source | Meaning |
+|---|---|---|
+| `elbow_flexion` | IMU rules | Forearm bends and returns around the elbow |
+| `forearm_rotation` | IMU rules | Forearm rotates around its long axis |
+| `too_fast` | IMU rules | Peak angular velocity exceeds the configured limit |
+| `insufficient_range` | IMU rules | Integrated movement angle is too small |
+| `trunk_compensation` | Vision | Shoulder-to-hip displacement exceeds the allowed baseline change |
+
+Firmware rules remain the default decision path. The optional multimodal model uses 100-sample IMU and pose windows, but the repository does not ship a trained checkpoint. Shoulder abduction should only be presented after collecting subject-labelled data and training the model.
+
+## Tests
+
+Run the full local check:
 
 ```bash
-cd ..
 ./scripts/test_all.sh
 ```
 
-This runs: 3 C host executables + Python tests + py_compile syntax checks + both firmware builds.
+It runs the C motion/packet tests, Python tests, syntax checks, dashboard smoke test, and both ESP-IDF builds. The current suite contains 3 C host tests and 49 Python tests.
 
-## Data Collection & Training
+## Repository layout
 
-### IMU-only (rule-based labels)
-
-```bash
-python collect_data.py --port auto --subject S01 --label idle --seconds 30
-python collect_data.py --port auto --subject S01 --label forearm_rotation --seconds 30
-python collect_data.py --port auto --subject S01 --label elbow_flexion --seconds 30
-
-python train_1d_cnn.py --data data --holdout-subject S03 \
-  --arch cnn_bigru --epochs 50 --output models/imu_cnn_bigru.pt
-
-python run_dashboard.py --port auto --model models/imu_cnn_bigru.pt
+```text
+wearable/        MYOSA ESP32 firmware
+receiver/        ESP32-S3 BLE receiver firmware
+shared/          Packet, motion, and feedback logic shared by host tests
+python/          Dashboard, synchronization, models, training, and tests
+maixcam2/        MaixPy UVC/RTSP camera application
+scripts/         Build, flash, camera probe, and demo launch helpers
+tests/           Host-side C tests
+docs/            Design and implementation records
 ```
 
-### Multimodal (IMU + vision, side-aware)
+## More documentation
 
-Collect labelled recordings directly from the dashboard — one exercise/quality pair per file:
+- [MaixCAM 2 setup](maixcam2/README.md)
+- [Complete wiring guide](WIRING_GUIDE.md)
+- [Step-by-step demonstration guide](DEMO_GUIDE.md)
+- [Bilingual component list](COMPONENTS.md)
 
-```bash
-python run_dashboard.py --port auto --side right --subject S01 \
-  --label-exercise elbow_flexion --label-quality ok \
-  --output multimodal_data/S01_elbow_ok.csv
+## Safety and scope
 
-python run_dashboard.py --port auto --side right --subject S01 \
-  --label-exercise elbow_flexion --label-quality too_fast \
-  --output multimodal_data/S01_elbow_fast.csv
-```
-
-Train with one participant held out:
-
-```bash
-python train_multimodal.py --data multimodal_data --holdout-subject S03 \
-  --output models/multimodal_cnn_bigru.pt
-
-python run_dashboard.py --port auto --side right \
-  --fusion-model models/multimodal_cnn_bigru.pt
-```
-
-Low-confidence model output falls back to deterministic wearable rules automatically.
-
-## CSV Schema
-
-Every received IMU sample is logged. When no matching video frame is found
-within the synchronization tolerance (50 ms), vision columns are explicit
-missing markers (= 0.0, `vision_valid` = 0).
-
-| Column | Description |
-|--------|-------------|
-| `t_ms`, `received_s` | Device timestamp (ms) + host receive time (s) |
-| `ax`–`gz` | Accelerometer (g) and gyroscope (dps) |
-| `state`, `rep_count`, `quality` | Wearable classifier output |
-| `elbow_angle_deg`–`visibility` | 9 pose feature channels |
-| `vision_valid` | 1.0 when a matching frame exists |
-| `model_exercise`–`model_confidence` | Multimodal model output (empty if unused) |
-| `visual_confidence` | Per-window visibility × validity |
-| `subject`, `label_exercise`, `label_quality` | Human labels for training |
-
-## Threshold Calibration
-
-Default thresholds are defined in `motion_default_config()` (`shared/motion_logic.c`). Key parameters:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enter_threshold_dps` | 45 | Entry threshold (dps) |
-| `exit_threshold_dps` | 15 | Exit threshold (dps) |
-| `dominance_ratio` | 1.30 | Gyro axis dominance ratio |
-| `min_range_deg` | 35 | Minimum rotation range per rep |
-| `too_fast_peak_dps` | 280 | Peak speed warning threshold |
-| `min_rep_duration_ms` | 450 | Shortest valid repetition |
-| `max_rep_duration_ms` | 5000 | Longest valid repetition |
-| `refractory_ms` | 300 | Cooldown between reps |
-| `adapt_k` | 0.8 | Adaptive threshold gain |
-| `adapt_floor_dps` / `adapt_ceil_dps` | 25 / 150 | Adaptive bounds |
-
-If axes are reversed by physical mounting, change the two gyro inputs passed to `motion_logic_update()` in `wearable/main/app_main.c`.
-
-## Safety & Scope
-
-This is an engineering prototype. It does **not** diagnose injury, prescribe treatment, predict clinical scores, or replace a physiotherapist.
-
-## References
-
-- Wang, Y. et al. (2026). Complementary filtering for wearable IMU orientation estimation.
-- Khalilipour, S. et al. (2025). Adaptive thresholding for IMU-based rehabilitation exercise detection.
-- Obukhov, A. et al. (2025). CNN-BiGRU architectures for time-series human activity recognition.
+LiteRehab is not intended for diagnosis, clinical scoring, treatment prescription, or unsupervised rehabilitation decisions. During a demonstration, stop immediately if the participant feels pain, dizziness, numbness, or unusual discomfort.
