@@ -75,7 +75,9 @@ The tagline is:
 
 Produce the final pitch in LaTeX as a single A4 portrait page. Keep the source editable and compile it into a submission-ready PDF.
 
-Use a clean product-pitch layout rather than a two-column academic-paper template. The page should have a strong title area, compact content blocks, a simple system-flow graphic, and enough whitespace to remain readable when printed. Use standard or bundled LaTeX packages and embed no remote assets.
+Use a clean academic product-brief layout rather than a poster or a two-column conference-paper template. The page should have a strong title area, compact content blocks, a simple system-flow graphic, and enough whitespace to remain readable when printed. Use standard or bundled LaTeX packages and embed no remote assets.
+
+Use Latin Modern, the scalable version of LaTeX's standard Computer Modern paper typeface, for the body and headings. Use restrained dark blue and teal accents only for hierarchy, rules, and the system diagram. Do not use decorative fonts, oversized marketing typography, gradients, shadows, stock icons, or dense boxed layouts. Body text must remain at least 9 pt in the final PDF.
 
 The compiled page must have no overflow, clipped text, unresolved references, missing glyphs, or content on a second page. Verify the final PDF by rendering it to an image and inspecting the full page at normal reading size.
 
