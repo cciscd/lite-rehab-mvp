@@ -71,11 +71,20 @@ The tagline is:
 
 > Real-time guidance for more consistent upper-limb rehabilitation practice at home.
 
+## Format and layout
+
+Produce the final pitch in LaTeX as a single A4 portrait page. Keep the source editable and compile it into a submission-ready PDF.
+
+Use a clean product-pitch layout rather than a two-column academic-paper template. The page should have a strong title area, compact content blocks, a simple system-flow graphic, and enough whitespace to remain readable when printed. Use standard or bundled LaTeX packages and embed no remote assets.
+
+The compiled page must have no overflow, clipped text, unresolved references, missing glyphs, or content on a second page. Verify the final PDF by rendering it to an image and inspecting the full page at normal reading size.
+
 ## Deliverables
 
 The writing phase will produce:
 
-- a polished one-page English pitch;
+- an editable LaTeX source file for a polished one-page English pitch;
+- a compiled, submission-ready A4 PDF;
 - a compact version suitable for placing directly into a single-page visual layout;
 - a brief claim audit identifying which statements are demonstrated, proposed, or future work;
 - a final Humanizer pass that preserves the technical meaning and course-appropriate tone.
