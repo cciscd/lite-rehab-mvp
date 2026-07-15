@@ -109,7 +109,7 @@ void app_main(void)
     unsigned display_divider = 0;
     TickType_t last_wake = xTaskGetTickCount();
 
-    while (true) {
+    while (true) {//主循环，读取传感器数据，更新动作逻辑，发送BLE数据包，并更新OLED显示
         mpu6050_sample_t sample;
         if (mpu6050_read(&sensor, &sample) == ESP_OK) {
             const uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);

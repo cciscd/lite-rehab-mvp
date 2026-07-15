@@ -9,20 +9,21 @@
 #define MOTION_PACKET_VERSION 1u
 #define MOTION_PACKET_SIZE 26u
 
-typedef enum {
+typedef enum {// Motion state values
+    //主要是前臂旋转和肘关节屈曲
     MOTION_STATE_IDLE = 0,
     MOTION_STATE_FOREARM_ROTATION = 1,
     MOTION_STATE_ELBOW_FLEXION = 2,
 } motion_state_t;
 
-typedef enum {
+typedef enum {// Motion quality values
     MOTION_QUALITY_NONE = 0,
     MOTION_QUALITY_OK = 1,
     MOTION_QUALITY_TOO_FAST = 2,
     MOTION_QUALITY_INSUFFICIENT_RANGE = 3,
 } motion_quality_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed)) {// Motion packet structure
     uint8_t magic;
     uint8_t version;
     uint16_t sequence;

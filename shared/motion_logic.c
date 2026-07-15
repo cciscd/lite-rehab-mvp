@@ -38,13 +38,15 @@ void motion_logic_init(motion_logic_t *logic, const motion_config_t *config)
     logic->adaptive_exit = logic->config.exit_threshold_dps;
 }
 
-static void update_complementary_filter(motion_logic_t *logic,
+static void update_complementary_filter(motion_logic_t *logic,//
+    /*这是互补滤波算法
+    */
                                          float gx, float gy,
                                          float ax, float ay, float az,
                                          float dt_s)
 {
-    float roll_acc = atan2f(ay, az) * 180.0f / M_PI;
-    float pitch_acc = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / M_PI;
+    float roll_acc = atan2f(ay, az) * 180.0f / M_PI;//计算roll角度
+    float pitch_acc = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / M_PI;//计算pitch角度
 
     if (!logic->cf_initialized) {
         logic->roll_deg = roll_acc;
@@ -73,12 +75,14 @@ static void update_adaptive_thresholds(motion_logic_t *logic, float signal_mag)
     logic->adaptive_exit = logic->adaptive_enter * 0.33f;
 }
 
-static motion_state_t classify_axis(const motion_logic_t *logic,
+static motion_state_t classify_axis(const motion_logic_t *logic,//动作类型判断
+    //整体逻辑就是根据陀螺仪的加速度和角速度来判断当前的动作类型，主要是前臂旋转和肘关节屈曲
+    //通过比较x轴和y轴的陀螺仪数据的绝对值来判断哪个动作占主导地位，同时也考虑了加速度的影响
                                      float gx, float gy,
                                      float ax, float ay)
 {
-    float ax_abs = fabsf(gx);
-    float ay_abs = fabsf(gy);
+    float ax_abs = fabsf(gx);//计算x轴陀螺仪绝对值
+    float ay_abs = fabsf(gy);//计算y轴陀螺仪绝对值
     if (ax_abs < logic->adaptive_enter && ay_abs < logic->adaptive_enter)
         return MOTION_STATE_IDLE;
 
@@ -105,7 +109,7 @@ static float axis_value(motion_state_t state, float gx, float gy)
 
 static void finish_repetition(motion_logic_t *logic, uint32_t timestamp_ms)
 {
-    const uint32_t duration = timestamp_ms - logic->start_ms;
+    const uint32_t duration = timestamp_ms - logic->start_ms;//计算持续时间
     logic->result.rep_completed = true;
     logic->result.last_completed_state = logic->active_state;
     if (logic->integrated_abs_deg < logic->config.min_range_deg) {
@@ -160,7 +164,7 @@ motion_result_t motion_logic_update(motion_logic_t *logic,
     }
 
     const motion_state_t classified = classify_axis(logic, gx, gy, ax_g, ay_g);
-
+    //状态机
     if (logic->phase == 0) {
         logic->result.state = classified;
         if (classified != MOTION_STATE_IDLE &&

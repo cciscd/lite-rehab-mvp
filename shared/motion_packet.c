@@ -1,7 +1,8 @@
 #include "motion_packet.h"
 
 #include <stddef.h>
-
+// Ensure the motion_packet_t structure is packed and has the expected size
+//主要是为了BLE传输数据的大小限制，确保结构体的大小为26字节
 _Static_assert(sizeof(motion_packet_t) == MOTION_PACKET_SIZE,
                "motion_packet_t layout changed");
 

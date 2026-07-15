@@ -6,12 +6,12 @@
 
 #include "motion_packet.h"
 
-typedef struct {
-    float filter_alpha;
-    float comp_alpha;
-    float enter_threshold_dps;
+typedef struct {//这是动作逻辑的配置参数
+    float filter_alpha;//低通滤波系数
+    float comp_alpha;//修正滤波系数
+    float enter_threshold_dps;//进入和退出阈值，用了滞环控制，避免抖动
     float exit_threshold_dps;
-    float dominance_ratio;
+    float dominance_ratio;//用于判断六轴陀螺仪哪个占主导地位，前臂旋转主要是x轴陀螺仪，肘关节屈曲主要是y轴陀螺仪
     float min_range_deg;
     float too_fast_peak_dps;
     uint32_t min_rep_duration_ms;
@@ -22,14 +22,14 @@ typedef struct {
     float adapt_ceil_dps;
 } motion_config_t;
 
-typedef struct {
+typedef struct {//对外输出的动作逻辑结果
     motion_state_t state;
     motion_state_t last_completed_state;
     motion_quality_t quality;
-    uint16_t rep_count;
+    uint16_t rep_count;//累计动作次数
     bool rep_completed;
-    float filtered_gyro[3];
-    float roll_deg;
+    float filtered_gyro[3];//滤波后的三轴陀螺仪数据
+    float roll_deg;//互补滤波后的姿态角
     float pitch_deg;
 } motion_result_t;
 
