@@ -8,15 +8,18 @@ import numpy as np
 
 CANVAS_SIZE = (1280, 720)
 COLORS = {
-    "background": (43, 27, 17),
-    "surface": (55, 39, 28),
-    "surface_alt": (70, 52, 39),
-    "text": (240, 244, 248),
-    "muted_text": (156, 165, 178),
-    "success": (105, 200, 91),
-    "info": (232, 156, 65),
-    "warning": (65, 181, 245),
-    "danger": (79, 79, 239),
+    "background": (31, 24, 14),
+    "surface": (46, 37, 24),
+    "surface_alt": (60, 49, 32),
+    "border": (82, 68, 44),
+    "text": (244, 247, 250),
+    "muted_text": (166, 174, 184),
+    "primary": (212, 184, 62),
+    "primary_soft": (116, 92, 34),
+    "success": (126, 202, 84),
+    "info": (224, 168, 67),
+    "warning": (66, 184, 245),
+    "danger": (83, 83, 239),
     "muted": (112, 120, 132),
 }
 
@@ -76,6 +79,67 @@ def feedback_presentation(feedback: str) -> tuple[str, str]:
     return known.get(feedback, (feedback.upper() or "READY", "info"))
 
 
+def _resolve_color(
+    color: str | int | tuple[int, int, int],
+) -> int | tuple[int, int, int]:
+    return COLORS[color] if isinstance(color, str) else color
+
+
+def _rounded_rect(
+    image: np.ndarray,
+    top_left: tuple[int, int],
+    bottom_right: tuple[int, int],
+    color: str | int | tuple[int, int, int],
+    radius: int,
+) -> None:
+    x1, y1 = top_left
+    x2, y2 = bottom_right
+    radius = max(0, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+    resolved = _resolve_color(color)
+    cv2.rectangle(image, (x1 + radius, y1), (x2 - radius, y2), resolved, -1)
+    cv2.rectangle(image, (x1, y1 + radius), (x2, y2 - radius), resolved, -1)
+    for center in (
+        (x1 + radius, y1 + radius),
+        (x2 - radius, y1 + radius),
+        (x1 + radius, y2 - radius),
+        (x2 - radius, y2 - radius),
+    ):
+        cv2.circle(image, center, radius, resolved, -1, cv2.LINE_AA)
+
+
+def _rounded_card(
+    image: np.ndarray,
+    top_left: tuple[int, int],
+    bottom_right: tuple[int, int],
+    fill: str = "surface",
+    border: str = "border",
+    radius: int = 16,
+) -> None:
+    _rounded_rect(image, top_left, bottom_right, border, radius)
+    x1, y1 = top_left
+    x2, y2 = bottom_right
+    _rounded_rect(
+        image,
+        (x1 + 1, y1 + 1),
+        (x2 - 1, y2 - 1),
+        fill,
+        max(0, radius - 1),
+    )
+
+
+def _rounded_overlay(
+    image: np.ndarray,
+    top_left: tuple[int, int],
+    bottom_right: tuple[int, int],
+    color: str | tuple[int, int, int],
+    alpha: float,
+    radius: int = 14,
+) -> None:
+    overlay = image.copy()
+    _rounded_rect(overlay, top_left, bottom_right, color, radius)
+    cv2.addWeighted(overlay, alpha, image, 1.0 - alpha, 0, image)
+
+
 def _text(
     image: np.ndarray,
     text: str,
@@ -84,25 +148,16 @@ def _text(
     color: str | tuple[int, int, int] = "text",
     thickness: int = 1,
 ) -> None:
-    resolved = COLORS[color] if isinstance(color, str) else color
     cv2.putText(
         image,
         text,
         origin,
         cv2.FONT_HERSHEY_SIMPLEX,
         scale,
-        resolved,
+        _resolve_color(color),
         thickness,
         cv2.LINE_AA,
     )
-
-
-def _card(
-    image: np.ndarray,
-    top_left: tuple[int, int],
-    bottom_right: tuple[int, int],
-) -> None:
-    cv2.rectangle(image, top_left, bottom_right, COLORS["surface"], -1)
 
 
 def _chip(
@@ -114,21 +169,19 @@ def _chip(
 ) -> int:
     tone = status_tone(status)
     text_width = cv2.getTextSize(
-        label,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.42,
-        1,
+        label, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1
     )[0][0]
-    width = max(112, 32 + text_width)
-    cv2.rectangle(
+    width = max(104, 31 + text_width)
+    _rounded_card(
         image,
         (x, y),
-        (x + width, y + 30),
-        COLORS["surface_alt"],
-        -1,
+        (x + width, y + 28),
+        fill="surface_alt",
+        border="border",
+        radius=14,
     )
-    cv2.circle(image, (x + 14, y + 15), 5, COLORS[tone], -1)
-    _text(image, label, (x + 26, y + 20), 0.42)
+    cv2.circle(image, (x + 14, y + 14), 4, COLORS[tone], -1, cv2.LINE_AA)
+    _text(image, label, (x + 25, y + 18), 0.38, "muted_text")
     return width
 
 
@@ -233,11 +286,11 @@ def render_dashboard(
     cv2.addWeighted(banner, 0.88, canvas, 0.12, 0, canvas)
     _text(canvas, message, (58, 644), 0.75, thickness=2)
 
-    _card(canvas, (840, 80), (1260, 218))
+    _rounded_card(canvas, (840, 80), (1260, 218))
     _text(canvas, "REPETITIONS", (862, 110), 0.45, "muted_text")
     _text(canvas, str(state.repetitions), (858, 194), 2.35, thickness=4)
 
-    _card(canvas, (840, 230), (1260, 340))
+    _rounded_card(canvas, (840, 230), (1260, 340))
     _text(canvas, "CURRENT EXERCISE", (862, 258), 0.42, "muted_text")
     _text(
         canvas,
@@ -252,8 +305,8 @@ def render_dashboard(
     )
     _text(canvas, context, (862, 325), 0.4, "muted_text")
 
-    _card(canvas, (840, 352), (1044, 438))
-    _card(canvas, (1056, 352), (1260, 438))
+    _rounded_card(canvas, (840, 352), (1044, 438))
+    _rounded_card(canvas, (1056, 352), (1260, 438))
     _text(canvas, "RANGE OF MOTION", (856, 378), 0.36, "muted_text")
     rom = "--" if state.rom_deg is None else f"{state.rom_deg:.1f} deg"
     _text(canvas, rom, (856, 417), 0.7, thickness=2)

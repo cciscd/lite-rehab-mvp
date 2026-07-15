@@ -5,6 +5,7 @@ import numpy as np
 from literehab.dashboard_view import (
     COLORS,
     DashboardViewState,
+    _rounded_card,
     display_label,
     feedback_presentation,
     render_dashboard,
@@ -47,12 +48,21 @@ def test_internal_labels_are_human_readable():
     assert display_label("") == "--"
 
 
-def test_dark_theme_uses_cool_clinical_surfaces():
-    background = COLORS["background"]
-    surface = COLORS["surface"]
+def test_clinical_theme_has_distinct_surface_border_and_primary_colors():
+    assert COLORS["background"][0] > COLORS["background"][2]
+    assert COLORS["surface"] != COLORS["background"]
+    assert COLORS["border"] != COLORS["surface"]
+    assert COLORS["primary"] != COLORS["success"]
 
-    assert background[0] > background[2]
-    assert surface[0] > surface[2]
+
+def test_rounded_card_preserves_corner_and_draws_border_and_fill():
+    image = np.zeros((48, 48, 3), dtype=np.uint8)
+
+    _rounded_card(image, (4, 4), (43, 43), radius=10)
+
+    assert tuple(image[4, 4]) == (0, 0, 0)
+    assert tuple(image[4, 20]) == COLORS["border"]
+    assert tuple(image[24, 24]) == COLORS["surface"]
 
 
 def test_device_statuses_have_semantic_tones():
