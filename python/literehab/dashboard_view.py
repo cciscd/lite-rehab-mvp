@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import cv2
@@ -183,6 +184,95 @@ def _chip(
     cv2.circle(image, (x + 14, y + 14), 4, COLORS[tone], -1, cv2.LINE_AA)
     _text(image, label, (x + 25, y + 18), 0.38, "muted_text")
     return width
+
+
+def confidence_fraction(text: str) -> float | None:
+    match = re.search(r"(?:^|\s)(0(?:\.\d+)?|1(?:\.0+)?)\s*$", text)
+    if match is None:
+        return None
+    return min(1.0, max(0.0, float(match.group(1))))
+
+
+def _draw_arc(
+    image: np.ndarray,
+    center: tuple[int, int],
+    radius: int,
+    fraction: float,
+    tone: str,
+    thickness: int = 8,
+) -> None:
+    fraction = min(1.0, max(0.0, fraction))
+    cv2.ellipse(
+        image,
+        center,
+        (radius, radius),
+        0,
+        135,
+        405,
+        COLORS["surface_alt"],
+        thickness,
+        cv2.LINE_AA,
+    )
+    cv2.ellipse(
+        image,
+        center,
+        (radius, radius),
+        0,
+        135,
+        135 + int(270 * fraction),
+        COLORS[tone],
+        thickness,
+        cv2.LINE_AA,
+    )
+
+
+def _draw_repetition_card(
+    image: np.ndarray,
+    state: DashboardViewState,
+) -> None:
+    _rounded_card(image, (840, 80), (1260, 224))
+    _text(image, "SESSION REPS", (862, 108), 0.4, "muted_text")
+    _draw_arc(image, (1182, 152), 46, 0.82, "primary", thickness=7)
+    _text(image, str(state.repetitions), (866, 190), 2.25, "text", 4)
+    _text(image, "COMPLETED", (1118, 157), 0.34, "muted_text")
+
+
+def _draw_rom_card(image: np.ndarray, rom_deg: float | None) -> None:
+    _rounded_card(image, (840, 346), (1048, 454))
+    _text(image, "RANGE OF MOTION", (856, 372), 0.34, "muted_text")
+    fraction = (
+        0.0
+        if rom_deg is None
+        else min(1.0, max(0.0, rom_deg / 180.0))
+    )
+    _draw_arc(image, (1006, 410), 25, fraction, "primary", thickness=5)
+    value = "--" if rom_deg is None else f"{rom_deg:.1f} deg"
+    _text(image, value, (856, 426), 0.66, "text", 2)
+
+
+def _draw_model_card(image: np.ndarray, confidence_text: str) -> None:
+    _rounded_card(image, (1058, 346), (1260, 454))
+    _text(image, "MODEL STATUS", (1074, 372), 0.34, "muted_text")
+    _text(image, confidence_text, (1074, 408), 0.43, "text")
+    cv2.line(
+        image,
+        (1074, 431),
+        (1242, 431),
+        COLORS["surface_alt"],
+        6,
+        cv2.LINE_AA,
+    )
+    fraction = confidence_fraction(confidence_text)
+    if fraction is not None:
+        end_x = 1074 + int(168 * fraction)
+        cv2.line(
+            image,
+            (1074, 431),
+            (end_x, 431),
+            COLORS["success"],
+            6,
+            cv2.LINE_AA,
+        )
 
 
 def draw_gyro_chart(panel: np.ndarray, history) -> None:

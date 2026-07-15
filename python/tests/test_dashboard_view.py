@@ -5,7 +5,12 @@ import numpy as np
 from literehab.dashboard_view import (
     COLORS,
     DashboardViewState,
+    _draw_arc,
+    _draw_model_card,
+    _draw_repetition_card,
+    _draw_rom_card,
     _rounded_card,
+    confidence_fraction,
     display_label,
     feedback_presentation,
     render_dashboard,
@@ -107,6 +112,31 @@ def test_view_state_accepts_missing_optional_metrics():
     )
 
     assert state.rom_deg is None
+
+
+def test_confidence_fraction_only_accepts_terminal_probability():
+    assert confidence_fraction("Fusion 0.91") == 0.91
+    assert confidence_fraction("Fusion 1.00") == 1.0
+    assert confidence_fraction("warming up (30/100)") is None
+    assert confidence_fraction("disabled") is None
+
+
+def test_draw_arc_clamps_fraction_and_marks_the_canvas():
+    image = np.full((120, 120, 3), COLORS["surface"], dtype=np.uint8)
+
+    _draw_arc(image, (60, 60), 38, 1.8, "primary", thickness=6)
+
+    assert np.any(image != np.asarray(COLORS["surface"], dtype=np.uint8))
+
+
+def test_metric_cards_render_with_missing_values():
+    canvas = np.full((720, 1280, 3), COLORS["background"], dtype=np.uint8)
+
+    _draw_repetition_card(canvas, base_state())
+    _draw_rom_card(canvas, None)
+    _draw_model_card(canvas, "warming up (30/100)")
+
+    assert np.any(canvas[80:454, 840:1260] != np.asarray(COLORS["background"]))
 
 
 def test_renderer_returns_fixed_nonempty_canvas():
