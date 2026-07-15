@@ -234,7 +234,6 @@ def _draw_repetition_card(
     _text(image, "SESSION REPS", (862, 108), 0.4, "muted_text")
     _draw_arc(image, (1182, 152), 46, 0.82, "primary", thickness=7)
     _text(image, str(state.repetitions), (866, 190), 2.25, "text", 4)
-    _text(image, "COMPLETED", (1118, 157), 0.34, "muted_text")
 
 
 def _draw_rom_card(image: np.ndarray, rom_deg: float | None) -> None:

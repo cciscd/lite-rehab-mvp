@@ -64,6 +64,11 @@ POSE_CONNECTIONS = [
     (27, 29), (28, 30), (29, 31), (30, 32), (27, 31), (28, 32),
 ]
 
+POSE_LINE_COLOR = (212, 184, 62)
+POSE_JOINT_COLOR = (244, 219, 118)
+POSE_JOINT_OUTLINE = (31, 24, 14)
+
+
 def choose_port(requested: str) -> str | None:
     if requested != "auto":
         return requested
@@ -153,15 +158,22 @@ class OptionalCNN:
 
 def draw_pose(frame: np.ndarray, landmarks) -> None:
     h, w = frame.shape[:2]
-    for connection in POSE_CONNECTIONS:
-        a_idx, b_idx = connection
+    for a_idx, b_idx in POSE_CONNECTIONS:
         a, b = landmarks[a_idx], landmarks[b_idx]
         if a.visibility > 0.5 and b.visibility > 0.5:
-            cv2.line(frame, (int(a.x * w), int(a.y * h)),
-                     (int(b.x * w), int(b.y * h)), (0, 255, 0), 1)
-    for lm in landmarks:
-        if lm.visibility > 0.5:
-            cv2.circle(frame, (int(lm.x * w), int(lm.y * h)), 2, (0, 0, 255), -1)
+            cv2.line(
+                frame,
+                (int(a.x * w), int(a.y * h)),
+                (int(b.x * w), int(b.y * h)),
+                POSE_LINE_COLOR,
+                2,
+                cv2.LINE_AA,
+            )
+    for landmark in landmarks:
+        if landmark.visibility > 0.5:
+            center = (int(landmark.x * w), int(landmark.y * h))
+            cv2.circle(frame, center, 4, POSE_JOINT_OUTLINE, -1, cv2.LINE_AA)
+            cv2.circle(frame, center, 2, POSE_JOINT_COLOR, -1, cv2.LINE_AA)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
@@ -9,10 +10,29 @@ from literehab.cnn import build_model
 from literehab.telemetry import TelemetrySample
 from run_dashboard import (
     OptionalCNN,
+    POSE_JOINT_COLOR,
+    POSE_LINE_COLOR,
     build_parser,
     choose_port,
+    draw_pose,
     resolve_camera_argument,
 )
+
+
+def test_pose_overlay_uses_clinical_palette():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    landmarks = [
+        SimpleNamespace(x=0.1, y=0.1, visibility=0.0)
+        for _ in range(33)
+    ]
+    landmarks[0] = SimpleNamespace(x=0.2, y=0.5, visibility=1.0)
+    landmarks[1] = SimpleNamespace(x=0.8, y=0.5, visibility=1.0)
+
+    draw_pose(frame, landmarks)
+
+    pixels = frame.reshape(-1, 3)
+    assert np.any(np.all(pixels == np.asarray(POSE_LINE_COLOR), axis=1))
+    assert np.any(np.all(pixels == np.asarray(POSE_JOINT_COLOR), axis=1))
 
 
 def test_legacy_camera_argument_remains_supported():

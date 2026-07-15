@@ -139,6 +139,15 @@ def test_metric_cards_render_with_missing_values():
     assert np.any(canvas[80:454, 840:1260] != np.asarray(COLORS["background"]))
 
 
+def test_repetition_arc_center_stays_uncluttered():
+    canvas = np.full((720, 1280, 3), COLORS["background"], dtype=np.uint8)
+
+    _draw_repetition_card(canvas, base_state())
+
+    center = canvas[142:162, 1155:1210]
+    assert np.all(center == np.asarray(COLORS["surface"], dtype=np.uint8))
+
+
 def test_renderer_returns_fixed_nonempty_canvas():
     frame = np.full((600, 800, 3), 80, dtype=np.uint8)
 
